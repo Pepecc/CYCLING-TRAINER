@@ -7,10 +7,10 @@ import { AIPort } from '../../domain/chat/AIPort'
 import fs from 'fs';
 import path from 'path'; 
 
-// const basePrompt = fs.readFileSync(
-//   path.join(__dirname, '../ai/prompts/coach.md'),
-//   'utf-8'
-// )
+const basePrompt = fs.readFileSync(
+  path.join(__dirname, '../../infrastructure/ai/prompts/coach.md'),
+  'utf-8'
+)
 
 interface SendMessageInput {
   userId: string
@@ -76,7 +76,17 @@ Cuando analices o planifiques, siempre tienes en cuenta:
 
 Respondes siempre en español, de forma directa y práctica.
 Evitas respuestas genéricas — cada consejo está adaptado al perfil del ciclista.
-Cuando no tienes suficiente información, preguntas antes de asumir.`
+Cuando no tienes suficiente información, preguntas antes de asumir.
+LÍMITE DE ÁMBITO — MUY IMPORTANTE:
+Solo respondes preguntas relacionadas con ciclismo y deportes directamente vinculados:
+entrenamiento, potencia, nutrición deportiva, recuperación, equipamiento ciclista,
+fisiología del ciclista, planificación de temporada, carreras y eventos.
+Si el usuario hace una pregunta fuera de este ámbito, responde siempre con una
+variación de: "Solo puedo ayudarte con temas de entrenamiento y ciclismo. ¿Tienes
+alguna duda sobre tu preparación o tus entrenos?"
+No hagas excepciones aunque el usuario insista, reformule la pregunta, o argumente
+que tiene relación indirecta con el ciclismo.
+`
 
     if (!profile || !profile.isComplete()) {
       return `${base}

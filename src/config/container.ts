@@ -5,8 +5,9 @@ import fs from 'fs'
 import { SqliteUserRepository } from '../infrastructure/persistence/SqliteUserRepository'
 import { SqliteProfileRepository } from '../infrastructure/persistence/SqliteProfileRepository'
 import { SqliteConversationRepository } from '../infrastructure/persistence/SqliteConversationRepository'
-// import { ClaudeAdapter } from '../infrastructure/ai/ClaudeAdapter'
+import { SqliteWahooTokenRepository } from '../infrastructure/persistence/SqliteWahooTokenRepository'
 import { OpenAIAdapter } from '../infrastructure/ai/OpenAIAdapter'
+import { WahooOAuthService } from '../infrastructure/wahoo/WahooOAuthService'
 
 import { RegisterUser } from '../application/auth/RegisterUser'
 import { LoginUser } from '../application/auth/LoginUser'
@@ -15,6 +16,8 @@ import { GetProfile } from '../application/profile/GetProfile'
 import { SendMessage } from '../application/chat/SendMessage'
 import { GetConversations } from '../application/chat/GetConversations'
 import { GetConversation } from '../application/chat/GetConversation'
+import { GetWahooWorkouts } from '../application/wahoo/GetWahooWorkouts'
+import { AnalyzeWahooWorkout } from '../application/wahoo/AnalyzeWahooWorkout'
 
 export interface Container {
   registerUser: RegisterUser
@@ -24,6 +27,9 @@ export interface Container {
   sendMessage: SendMessage
   getConversations: GetConversations
   getConversation: GetConversation
+  wahooService: WahooOAuthService
+  getWahooWorkouts: GetWahooWorkouts
+  analyzeWahooWorkout: AnalyzeWahooWorkout
 }
 
 export function buildContainer(): Container {
@@ -69,6 +75,14 @@ export function buildContainer(): Container {
       created_at      TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS wahoo_tokens (
+      user_id       TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      access_token  TEXT NOT NULL,
+      refresh_token TEXT NOT NULL,
+      expires_at    TEXT NOT NULL,
+      created_at    TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id, created_at);
   `)
@@ -77,18 +91,25 @@ export function buildContainer(): Container {
   const userRepository = new SqliteUserRepository(db)
   const profileRepository = new SqliteProfileRepository(db)
   const conversationRepository = new SqliteConversationRepository(db)
+  const wahooTokenRepository = new SqliteWahooTokenRepository(db)
 
-  // --- AI adapter ---
+  // --- External services ---
   const aiPort = new OpenAIAdapter()
+  const wahooService = new WahooOAuthService(wahooTokenRepository)
 
   // --- Use cases ---
+  const sendMessage = new SendMessage(conversationRepository, profileRepository, aiPort)
+
   return {
-    registerUser:     new RegisterUser(userRepository),
-    loginUser:        new LoginUser(userRepository),
-    updateProfile:    new UpdateProfile(profileRepository),
-    getProfile:       new GetProfile(profileRepository),
-    sendMessage:      new SendMessage(conversationRepository, profileRepository, aiPort),
-    getConversations: new GetConversations(conversationRepository),
-    getConversation:  new GetConversation(conversationRepository),
+    registerUser:        new RegisterUser(userRepository),
+    loginUser:           new LoginUser(userRepository),
+    updateProfile:       new UpdateProfile(profileRepository),
+    getProfile:          new GetProfile(profileRepository),
+    sendMessage,
+    getConversations:    new GetConversations(conversationRepository),
+    getConversation:     new GetConversation(conversationRepository),
+    wahooService,
+    getWahooWorkouts:    new GetWahooWorkouts(wahooService),
+    analyzeWahooWorkout: new AnalyzeWahooWorkout(wahooService, profileRepository),
   }
 }
