@@ -26,7 +26,7 @@ export function createChatRouter({ sendMessage, getConversations, getConversatio
 
   router.get('/conversations/:id', async (req, res: Response) => {
     try {
-      const { userId } = req as AuthRequest
+      const { userId } = req as any
       const conversation = await getConversation.execute(userId, req.params.id)
       res.json({ conversation })
     } catch (err) {
