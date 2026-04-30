@@ -20,6 +20,8 @@ WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 
+COPY --from=builder /app/src/infrastructure/ai/prompts ./dist/infrastructure/ai/prompts
+
 RUN mkdir -p /app/data
 
 EXPOSE 3000
