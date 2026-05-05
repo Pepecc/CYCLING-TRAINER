@@ -4,6 +4,10 @@ import { ConversationRepository } from '../../domain/chat/ConversationRepository
 import { CyclistProfileRepository } from '../../domain/profile/CyclistProfileRepository'
 import { CyclistProfile } from '../../domain/profile/CyclistProfile'
 import { AIPort } from '../../domain/chat/AIPort'
+import { ToolExecutor } from '../../infrastructure/ai/tools/ToolExecutor'
+import { toolDefinitions } from '../../infrastructure/ai/tools/ToolDefinitions'
+import { OpenAIAdapter } from '../../infrastructure/ai/OpenAIAdapter'
+
 import fs from 'fs';
 import path from 'path'; 
 
@@ -27,7 +31,8 @@ export class SendMessage {
   constructor(
     private readonly conversationRepository: ConversationRepository,
     private readonly profileRepository: CyclistProfileRepository,
-    private readonly aiPort: AIPort
+    private readonly aiPort: AIPort,
+    private readonly toolExecutor: ToolExecutor | null = null
   ) {}
 
   async execute({ userId, content, conversationId }: SendMessageInput): Promise<SendMessageOutput> {
@@ -48,16 +53,32 @@ export class SendMessage {
     const systemPrompt = this.buildSystemPrompt(profile)
 
     // Persist user message
-    const userMessage = Message.create({ conversationId: conversation.id, role: 'user', content: content.trim() })
+    const userMessage = Message.create({
+      conversationId: conversation.id,
+      role: 'user',
+      content: content.trim(),
+    })
     await this.conversationRepository.saveMessage(userMessage)
     conversation.addMessage(userMessage)
 
-    // Call AI
+    // Wire tool executor with the current userId before calling AI
+    if (this.toolExecutor && this.aiPort instanceof OpenAIAdapter) {
+      this.aiPort.setToolExecutor((toolName, args) =>
+        this.toolExecutor!.execute(userId, toolName, args)
+      )
+    }
+
+    // Call AI — pass tools only if executor is available
     const contextMessages = conversation.getContextMessages(20)
-    const assistantContent = await this.aiPort.complete(systemPrompt, contextMessages)
+    const tools = this.toolExecutor ? toolDefinitions : undefined
+    const assistantContent = await this.aiPort.complete(systemPrompt, contextMessages, tools)
 
     // Persist assistant response
-    const assistantMessage = Message.create({ conversationId: conversation.id, role: 'assistant', content: assistantContent })
+    const assistantMessage = Message.create({
+      conversationId: conversation.id,
+      role: 'assistant',
+      content: assistantContent,
+    })
     await this.conversationRepository.saveMessage(assistantMessage)
 
     return { conversationId: conversation.id, message: assistantMessage }
@@ -74,9 +95,14 @@ Cuando analices o planifiques, siempre tienes en cuenta:
 - Nutrición y recuperación como parte del entrenamiento
 - La vida real del ciclista (trabajo, familia, fatiga)
 
+Tienes acceso a herramientas para consultar los entrenamientos reales del usuario en Wahoo.
+Úsalas siempre que el usuario pregunte por entrenamientos recientes, carga, forma o planificación.
+No inventes datos — si necesitas información de Wahoo, usa las herramientas disponibles.
+
 Respondes siempre en español, de forma directa y práctica.
 Evitas respuestas genéricas — cada consejo está adaptado al perfil del ciclista.
 Cuando no tienes suficiente información, preguntas antes de asumir.
+
 LÍMITE DE ÁMBITO — MUY IMPORTANTE:
 Solo respondes preguntas relacionadas con ciclismo y deportes directamente vinculados:
 entrenamiento, potencia, nutrición deportiva, recuperación, equipamiento ciclista,
@@ -85,8 +111,7 @@ Si el usuario hace una pregunta fuera de este ámbito, responde siempre con una
 variación de: "Solo puedo ayudarte con temas de entrenamiento y ciclismo. ¿Tienes
 alguna duda sobre tu preparación o tus entrenos?"
 No hagas excepciones aunque el usuario insista, reformule la pregunta, o argumente
-que tiene relación indirecta con el ciclismo.
-`
+que tiene relación indirecta con el ciclismo.`
 
     if (!profile || !profile.isComplete()) {
       return `${base}

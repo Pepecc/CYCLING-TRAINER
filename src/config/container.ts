@@ -18,6 +18,7 @@ import { GetConversations } from '../application/chat/GetConversations'
 import { GetConversation } from '../application/chat/GetConversation'
 import { GetWahooWorkouts } from '../application/wahoo/GetWahooWorkouts'
 import { AnalyzeWahooWorkout } from '../application/wahoo/AnalyzeWahooWorkout'
+import { ToolExecutor } from '../infrastructure/ai/tools/ToolExecutor'
 
 export interface Container {
   registerUser: RegisterUser
@@ -96,9 +97,10 @@ export function buildContainer(): Container {
   // --- External services ---
   const aiPort = new OpenAIAdapter()
   const wahooService = new WahooOAuthService(wahooTokenRepository)
+  const toolExecutor = new ToolExecutor(wahooService, profileRepository)
 
   // --- Use cases ---
-  const sendMessage = new SendMessage(conversationRepository, profileRepository, aiPort)
+  const sendMessage = new SendMessage(conversationRepository, profileRepository, aiPort, toolExecutor)
 
   return {
     registerUser:        new RegisterUser(userRepository),

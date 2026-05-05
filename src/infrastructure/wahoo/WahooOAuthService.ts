@@ -64,7 +64,7 @@ export class WahooOAuthService {
     const params = new URLSearchParams({
       client_id: this.clientId,
       redirect_uri: this.redirectUri,
-      scope: 'user_read workouts_read offline_data',
+      scope: process.env.WAHOO_SCOPES ??  "email power_zones_read workouts_read plans_read routes_read offline_data user_read",
       response_type: 'code',
       state,
     })
