@@ -61,14 +61,15 @@ export class WahooOAuthService {
   // ─── Step 1: Build the authorization URL ────────────────────────────────────
 
   buildAuthorizationUrl(state: string): string {
+    const scopes = "email power_zones_read workouts_read plans_read routes_read offline_data user_read"
     const params = new URLSearchParams({
       client_id: this.clientId,
       redirect_uri: this.redirectUri,
-      scope: process.env.WAHOO_SCOPES ??  "email power_zones_read workouts_read plans_read routes_read offline_data user_read",
+      // scope: process.env.WAHOO_SCOPES ??  "email power_zones_read workouts_read plans_read routes_read offline_data user_read",
       response_type: 'code',
       state,
     })
-    return `${WAHOO_BASE_URL}/oauth/authorize?${params.toString()}`
+    return `${WAHOO_BASE_URL}/oauth/authorize?${params.toString()}&scope=${encodeURIComponent(scopes)}`
   }
 
   // ─── Step 2: Exchange code for tokens ───────────────────────────────────────
