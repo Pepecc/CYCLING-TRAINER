@@ -45,6 +45,17 @@ export function createWahooRouter(container: WahooContainer): Router {
     res.redirect(authUrl)
   })
 
+  // ── GET /api/wahoo/connect-url ────────────────────────────────────────────
+  // Returns the Wahoo authorization URL as JSON (for frontend-initiated OAuth)
+  router.get('/connect-url', authMiddleware, (req, res: Response) => {
+    const { userId } = req as AuthRequest
+    const state = crypto.randomBytes(16).toString('hex')
+    pendingStates.set(state, userId)
+    setTimeout(() => pendingStates.delete(state), 10 * 60 * 1000)
+    const url = wahooService.buildAuthorizationUrl(state)
+    res.json({ url })
+  })
+
   // ── GET /api/wahoo/callback ───────────────────────────────────────────────
   // Wahoo redirects here after user authorizes
   router.get('/callback', async (req: Request, res: Response) => {
