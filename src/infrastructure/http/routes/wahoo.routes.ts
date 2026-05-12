@@ -60,9 +60,10 @@ export function createWahooRouter(container: WahooContainer): Router {
   // Wahoo redirects here after user authorizes
   router.get('/callback', async (req: Request, res: Response) => {
     const { code, state, error } = req.query as Record<string, string>
+    const frontendUrl = (process.env.FRONTEND_URL)?.toString().replace(/\/$/, '')
 
     if (error) {
-      return res.redirect(`/?wahoo_error=${encodeURIComponent(error)}`)
+      return res.redirect(`${frontendUrl}/?wahoo_error=${encodeURIComponent(error)}`)
     }
 
     if (!code || !state) {
@@ -78,11 +79,10 @@ export function createWahooRouter(container: WahooContainer): Router {
 
     try {
       await wahooService.exchangeCode(userId, code)
-      // Redirect to frontend with success flag
-      res.redirect('/?wahoo_connected=true')
+      res.redirect(`${frontendUrl}/?wahoo_connected=true`)
     } catch (err) {
       console.error('Wahoo callback error:', err)
-      res.redirect(`/?wahoo_error=${encodeURIComponent((err as Error).message)}`)
+      res.redirect(`${frontendUrl}/?wahoo_error=${encodeURIComponent((err as Error).message)}`)
     }
   })
 
