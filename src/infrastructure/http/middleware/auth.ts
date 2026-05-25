@@ -1,17 +1,27 @@
 import { Request, Response, NextFunction } from 'express'
-import jwt from 'jsonwebtoken'
+import admin from 'firebase-admin'
+import { UserRepository } from '../../../domain/user/UserRepository'
 
 export interface AuthRequest extends Request {
   userId: string
   userEmail: string
 }
 
-interface JwtPayload {
-  userId: string
-  email: string
+let _userRepository: UserRepository
+
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT as string);
+
+export function configureAuth(userRepository: UserRepository): void {
+  _userRepository = userRepository
+
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+}
 }
 
-export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
+export async function authMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers['authorization']
   if (!authHeader?.startsWith('Bearer ')) {
     res.status(401).json({ error: 'Token requerido' })
@@ -19,17 +29,18 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
   }
 
   const token = authHeader.split(' ')[1]
-  const secret = process.env.JWT_SECRET
-
-  if (!secret) {
-    res.status(500).json({ error: 'JWT_SECRET no configurado' })
-    return
-  }
 
   try {
-    const payload = jwt.verify(token, secret) as JwtPayload
-      (req as AuthRequest).userId = payload.userId;
-      (req as AuthRequest).userEmail = payload.email;
+    const decoded = await admin.auth().verifyIdToken(token)
+
+    if (!decoded.email_verified) {
+      res.status(403).json({ error: 'Email no verificado. Revisa tu bandeja de entrada y confirma tu cuenta.' })
+      return
+    }
+
+    await _userRepository.ensureExists(decoded.uid, decoded.email!)
+    ;(req as AuthRequest).userId    = decoded.uid
+    ;(req as AuthRequest).userEmail = decoded.email!
     next()
   } catch {
     res.status(401).json({ error: 'Token inválido o expirado' })

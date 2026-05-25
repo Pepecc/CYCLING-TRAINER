@@ -2,7 +2,6 @@ import 'dotenv/config'
 import express, { Request, Response, NextFunction } from 'express'
 import cors from 'cors'
 import { buildContainer } from '../../config/container'
-import { createAuthRouter } from './routes/auth.routes'
 import { createProfileRouter } from './routes/profile.routes'
 import { createChatRouter } from './routes/chat.routes'
 import { createWahooRouter } from './routes/wahoo.routes'
@@ -17,10 +16,9 @@ async function bootstrap(): Promise<void> {
 
   const container = buildContainer()
 
-  app.use('/api/auth',    createAuthRouter(container))
   app.use('/api/profile', createProfileRouter(container))
   app.use('/api/chat',    createChatRouter(container))
-  app.use('/api/wahoo', createWahooRouter(container))
+  app.use('/api/wahoo',   createWahooRouter(container))
 
   app.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() })

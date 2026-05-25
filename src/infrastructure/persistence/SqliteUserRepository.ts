@@ -5,7 +5,6 @@ import { UserRepository } from '../../domain/user/UserRepository'
 interface UserRow {
   id: string
   email: string
-  password_hash: string
   created_at: string
 }
 
@@ -24,20 +23,20 @@ export class SqliteUserRepository implements UserRepository {
 
   async save(user: User): Promise<void> {
     this.db.prepare(`
-      INSERT INTO users (id, email, password_hash, created_at)
-      VALUES (@id, @email, @passwordHash, @createdAt)
-      ON CONFLICT(id) DO UPDATE SET
-        email         = excluded.email,
-        password_hash = excluded.password_hash
-    `).run({ id: user.id, email: user.email, passwordHash: user.passwordHash, createdAt: user.createdAt })
+      INSERT INTO users (id, email, created_at)
+      VALUES (@id, @email, @createdAt)
+      ON CONFLICT(id) DO UPDATE SET email = excluded.email
+    `).run({ id: user.id, email: user.email, createdAt: user.createdAt })
+  }
+
+  async ensureExists(id: string, email: string): Promise<void> {
+    this.db.prepare(`
+      INSERT OR IGNORE INTO users (id, email, created_at)
+      VALUES (?, ?, ?)
+    `).run(id, email, new Date().toISOString())
   }
 
   private toEntity(row: UserRow): User {
-    return new User({
-      id: row.id,
-      email: row.email,
-      passwordHash: row.password_hash,
-      createdAt: row.created_at,
-    })
+    return new User({ id: row.id, email: row.email, createdAt: row.created_at })
   }
 }

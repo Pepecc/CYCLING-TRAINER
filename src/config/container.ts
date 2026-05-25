@@ -8,9 +8,8 @@ import { SqliteConversationRepository } from '../infrastructure/persistence/Sqli
 import { SqliteWahooTokenRepository } from '../infrastructure/persistence/SqliteWahooTokenRepository'
 import { OpenAIAdapter } from '../infrastructure/ai/OpenAIAdapter'
 import { WahooOAuthService } from '../infrastructure/wahoo/WahooOAuthService'
+import { configureAuth } from '../infrastructure/http/middleware/auth'
 
-import { RegisterUser } from '../application/auth/RegisterUser'
-import { LoginUser } from '../application/auth/LoginUser'
 import { UpdateProfile } from '../application/profile/UpdateProfile'
 import { GetProfile } from '../application/profile/GetProfile'
 import { SendMessage } from '../application/chat/SendMessage'
@@ -21,15 +20,13 @@ import { AnalyzeWahooWorkout } from '../application/wahoo/AnalyzeWahooWorkout'
 import { ToolExecutor } from '../infrastructure/ai/tools/ToolExecutor'
 
 export interface Container {
-  registerUser: RegisterUser
-  loginUser: LoginUser
-  updateProfile: UpdateProfile
-  getProfile: GetProfile
-  sendMessage: SendMessage
-  getConversations: GetConversations
-  getConversation: GetConversation
-  wahooService: WahooOAuthService
-  getWahooWorkouts: GetWahooWorkouts
+  updateProfile:       UpdateProfile
+  getProfile:          GetProfile
+  sendMessage:         SendMessage
+  getConversations:    GetConversations
+  getConversation:     GetConversation
+  wahooService:        WahooOAuthService
+  getWahooWorkouts:    GetWahooWorkouts
   analyzeWahooWorkout: AnalyzeWahooWorkout
 }
 
@@ -43,12 +40,12 @@ export function buildContainer(): Container {
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
 
+  // --- Schema ---
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
-      id            TEXT PRIMARY KEY,
-      email         TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      created_at    TEXT NOT NULL
+      id         TEXT PRIMARY KEY,
+      email      TEXT UNIQUE NOT NULL,
+      created_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS cyclist_profiles (
@@ -85,17 +82,44 @@ export function buildContainer(): Container {
     );
 
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
-    CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_conversations_user    ON conversations(user_id, created_at);
   `)
 
+  // --- Migration: eliminate password_hash column (legacy schema before Firebase auth) ---
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info('users')").all() as Array<{ name: string }>
+    const hasPasswordHash = tableInfo.some(col => col.name === 'password_hash')
+    if (hasPasswordHash) {
+      db.pragma('foreign_keys = OFF')
+      db.exec(`
+        CREATE TABLE users_new (
+          id         TEXT PRIMARY KEY,
+          email      TEXT UNIQUE NOT NULL,
+          created_at TEXT NOT NULL
+        );
+        INSERT INTO users_new (id, email, created_at)
+          SELECT id, email, created_at FROM users;
+        DROP TABLE users;
+        ALTER TABLE users_new RENAME TO users;
+      `)
+      db.pragma('foreign_keys = ON')
+      console.log('✓ DB migration: users table migrated to Firebase-compatible schema')
+    }
+  } catch (err) {
+    console.error('DB migration error:', err)
+  }
+
   // --- Repositories ---
-  const userRepository = new SqliteUserRepository(db)
-  const profileRepository = new SqliteProfileRepository(db)
+  const userRepository         = new SqliteUserRepository(db)
+  const profileRepository      = new SqliteProfileRepository(db)
   const conversationRepository = new SqliteConversationRepository(db)
-  const wahooTokenRepository = new SqliteWahooTokenRepository(db)
+  const wahooTokenRepository   = new SqliteWahooTokenRepository(db)
+
+  // --- Configure Firebase auth middleware ---
+  configureAuth(userRepository)
 
   // --- External services ---
-  const aiPort = new OpenAIAdapter()
+  const aiPort       = new OpenAIAdapter()
   const wahooService = new WahooOAuthService(wahooTokenRepository)
   const toolExecutor = new ToolExecutor(wahooService, profileRepository)
 
@@ -103,8 +127,6 @@ export function buildContainer(): Container {
   const sendMessage = new SendMessage(conversationRepository, profileRepository, aiPort, toolExecutor)
 
   return {
-    registerUser:        new RegisterUser(userRepository),
-    loginUser:           new LoginUser(userRepository),
     updateProfile:       new UpdateProfile(profileRepository),
     getProfile:          new GetProfile(profileRepository),
     sendMessage,
